@@ -9,8 +9,6 @@ from typing import Any
 import pytest
 from prometheus_client import CollectorRegistry, Histogram
 
-from lean_spec.subspecs.metrics import PrometheusObserver
-from lean_spec.subspecs.metrics import registry as metrics
 from lean_spec.subspecs.observability import (
     NullObserver,
     get_observer,
@@ -19,6 +17,8 @@ from lean_spec.subspecs.observability import (
     observe_state_transition,
     set_observer,
 )
+from lean_spec.subspecs.prometheus import PrometheusObserver
+from lean_spec.subspecs.prometheus import registry as metrics
 
 
 @pytest.fixture

@@ -588,7 +588,7 @@ class TestPeriodicLogging:
         """
         from prometheus_client import CollectorRegistry
 
-        from lean_spec.subspecs.metrics import registry as metrics_registry
+        from lean_spec.subspecs.prometheus import registry as metrics_registry
 
         test_reg = CollectorRegistry()
         metrics_registry.init(registry=test_reg)
@@ -631,7 +631,7 @@ class TestPeriodicLogging:
         """
         from prometheus_client import CollectorRegistry
 
-        from lean_spec.subspecs.metrics import registry as metrics_registry
+        from lean_spec.subspecs.prometheus import registry as metrics_registry
 
         test_reg = CollectorRegistry()
         metrics_registry.init(registry=test_reg)

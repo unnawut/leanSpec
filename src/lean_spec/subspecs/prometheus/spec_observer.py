@@ -10,7 +10,7 @@ The spec itself never imports this module.
 
 from __future__ import annotations
 
-from lean_spec.subspecs.metrics.registry import registry as metrics
+from lean_spec.subspecs.prometheus.registry import registry as metrics
 
 
 class PrometheusObserver:
