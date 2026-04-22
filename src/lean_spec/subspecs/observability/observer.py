@@ -30,8 +30,22 @@ class SpecObserver(Protocol):
 
     Return values are ignored.
     Every method is side-effect-only.
+
+    Categories
+
+    - Durations: state_transition_timed, on_block_timed, on_attestation_timed.
+      Emitted by the spec functions that execute them.
+    - Store-state snapshots: head_slot_observed, safe_target_observed,
+      justified_slot_observed, finalized_slot_observed.
+      Emitted by callers after a store-mutating operation and periodically
+      by the node loop.
+    - Node-state snapshots: current_slot_observed, peer_count_observed,
+      validator_count_observed. Emitted by the node loop.
+    - Discrete events: reorg_detected, attestation_validated,
+      attestation_rejected. Emitted by callers when classifying outcomes.
     """
 
+    # Duration events (histograms)
     def state_transition_timed(self, seconds: float) -> None:
         """Report the wall time of a state transition."""
 
@@ -40,6 +54,39 @@ class SpecObserver(Protocol):
 
     def on_attestation_timed(self, seconds: float) -> None:
         """Report the wall time of validating and integrating a gossip attestation."""
+
+    # Store-state snapshots (gauges)
+    def head_slot_observed(self, slot: int) -> None:
+        """Report the slot of the current canonical head."""
+
+    def safe_target_observed(self, slot: int) -> None:
+        """Report the slot of the current safe target."""
+
+    def justified_slot_observed(self, slot: int) -> None:
+        """Report the slot of the latest justified checkpoint."""
+
+    def finalized_slot_observed(self, slot: int) -> None:
+        """Report the slot of the latest finalized checkpoint."""
+
+    # Node-state snapshots (gauges)
+    def current_slot_observed(self, slot: int) -> None:
+        """Report the wall-clock slot."""
+
+    def peer_count_observed(self, count: int) -> None:
+        """Report the number of active peer connections."""
+
+    def validator_count_observed(self, count: int) -> None:
+        """Report the number of validators managed by this node."""
+
+    # Discrete events (counters / event-driven histograms)
+    def reorg_detected(self, depth: int) -> None:
+        """Report a fork-choice head change with its depth in blocks."""
+
+    def attestation_validated(self, source: str) -> None:
+        """Report a successful attestation validation, labeled by source."""
+
+    def attestation_rejected(self, source: str) -> None:
+        """Report a rejected attestation, labeled by source."""
 
 
 class NullObserver:
@@ -57,6 +104,36 @@ class NullObserver:
         """Accept and discard."""
 
     def on_attestation_timed(self, seconds: float) -> None:  # noqa: ARG002
+        """Accept and discard."""
+
+    def head_slot_observed(self, slot: int) -> None:  # noqa: ARG002
+        """Accept and discard."""
+
+    def safe_target_observed(self, slot: int) -> None:  # noqa: ARG002
+        """Accept and discard."""
+
+    def justified_slot_observed(self, slot: int) -> None:  # noqa: ARG002
+        """Accept and discard."""
+
+    def finalized_slot_observed(self, slot: int) -> None:  # noqa: ARG002
+        """Accept and discard."""
+
+    def current_slot_observed(self, slot: int) -> None:  # noqa: ARG002
+        """Accept and discard."""
+
+    def peer_count_observed(self, count: int) -> None:  # noqa: ARG002
+        """Accept and discard."""
+
+    def validator_count_observed(self, count: int) -> None:  # noqa: ARG002
+        """Accept and discard."""
+
+    def reorg_detected(self, depth: int) -> None:  # noqa: ARG002
+        """Accept and discard."""
+
+    def attestation_validated(self, source: str) -> None:  # noqa: ARG002
+        """Accept and discard."""
+
+    def attestation_rejected(self, source: str) -> None:  # noqa: ARG002
         """Accept and discard."""
 
 

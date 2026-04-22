@@ -52,9 +52,9 @@ from lean_spec.subspecs.containers.block import BlockLookup
 from lean_spec.subspecs.containers.slot import Slot
 from lean_spec.subspecs.containers.validator import SubnetId
 from lean_spec.subspecs.forkchoice.store import Store
-from lean_spec.subspecs.metrics import registry as metrics
 from lean_spec.subspecs.networking.reqresp.message import Status
 from lean_spec.subspecs.networking.transport.peer_id import PeerId
+from lean_spec.subspecs.observability import get_observer
 from lean_spec.subspecs.ssz.hash import hash_tree_root
 from lean_spec.subspecs.storage import Database
 from lean_spec.types import ZERO_HASH, Bytes32
@@ -96,18 +96,18 @@ def default_block_processor(
     """
     new_store = store.on_block(block)
 
-    metrics.lean_head_slot.set(new_store.blocks[new_store.head].slot)
-    metrics.lean_safe_target_slot.set(new_store.blocks[new_store.safe_target].slot)
-    metrics.lean_latest_justified_slot.set(new_store.latest_justified.slot)
-    metrics.lean_latest_finalized_slot.set(new_store.latest_finalized.slot)
+    observer = get_observer()
+    observer.head_slot_observed(new_store.blocks[new_store.head].slot)
+    observer.safe_target_observed(new_store.blocks[new_store.safe_target].slot)
+    observer.justified_slot_observed(new_store.latest_justified.slot)
+    observer.finalized_slot_observed(new_store.latest_finalized.slot)
 
     if new_store.head != store.head:
         depth = len(
             _ancestor_set(new_store.blocks, store.head)
             - _ancestor_set(new_store.blocks, new_store.head)
         )
-        metrics.lean_fork_choice_reorgs_total.inc()
-        metrics.lean_fork_choice_reorg_depth.observe(depth)
+        observer.reorg_detected(depth)
 
     return new_store
 
@@ -557,7 +557,7 @@ class SyncService:
                 signed_attestation=attestation,
                 is_aggregator=is_aggregator_role,
             )
-            metrics.lean_attestations_valid_total.labels(source="gossip").inc()
+            get_observer().attestation_validated("gossip")
             logger.info(
                 "Attestation from peer %s slot=%s validator=%s: validation and signature ok",
                 peer_str,
@@ -565,7 +565,7 @@ class SyncService:
                 validator_id,
             )
         except (AssertionError, KeyError) as e:
-            metrics.lean_attestations_invalid_total.labels(source="gossip").inc()
+            get_observer().attestation_rejected("gossip")
             logger.warning(
                 "Attestation from peer %s slot=%s validator=%s: validation or signature failed: %s",
                 peer_str,

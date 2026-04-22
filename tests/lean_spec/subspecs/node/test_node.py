@@ -588,10 +588,13 @@ class TestPeriodicLogging:
         """
         from prometheus_client import CollectorRegistry
 
+        from lean_spec.subspecs.metrics import PrometheusObserver
         from lean_spec.subspecs.metrics import registry as metrics_registry
+        from lean_spec.subspecs.observability import NullObserver, set_observer
 
         test_reg = CollectorRegistry()
         metrics_registry.init(registry=test_reg)
+        set_observer(PrometheusObserver())
 
         try:
             node = Node.from_genesis(node_config)
@@ -618,6 +621,7 @@ class TestPeriodicLogging:
             assert test_reg.get_sample_value("lean_latest_finalized_slot") == 0.0
             assert test_reg.get_sample_value("lean_validators_count") == 0.0
         finally:
+            set_observer(NullObserver())
             metrics_registry.reset()
             metrics_registry._initialized = False
 
@@ -631,10 +635,13 @@ class TestPeriodicLogging:
         """
         from prometheus_client import CollectorRegistry
 
+        from lean_spec.subspecs.metrics import PrometheusObserver
         from lean_spec.subspecs.metrics import registry as metrics_registry
+        from lean_spec.subspecs.observability import NullObserver, set_observer
 
         test_reg = CollectorRegistry()
         metrics_registry.init(registry=test_reg)
+        set_observer(PrometheusObserver())
 
         try:
             node = Node.from_genesis(node_config)
@@ -656,6 +663,7 @@ class TestPeriodicLogging:
 
             assert test_reg.get_sample_value("lean_validators_count") == 0.0
         finally:
+            set_observer(NullObserver())
             metrics_registry.reset()
             metrics_registry._initialized = False
 

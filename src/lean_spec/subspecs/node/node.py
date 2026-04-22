@@ -31,9 +31,9 @@ from lean_spec.subspecs.containers.slot import Slot
 from lean_spec.subspecs.containers.state import Validators
 from lean_spec.subspecs.containers.validator import SubnetId, ValidatorIndex
 from lean_spec.subspecs.forkchoice import Store
-from lean_spec.subspecs.metrics import registry as metrics
 from lean_spec.subspecs.networking import NetworkService
 from lean_spec.subspecs.networking.client.event_source import EventSource
+from lean_spec.subspecs.observability import get_observer
 from lean_spec.subspecs.ssz.hash import hash_tree_root
 from lean_spec.subspecs.storage import Database, SQLiteDatabase
 from lean_spec.subspecs.sync import BlockCache, NetworkRequester, PeerManager, SyncService
@@ -491,16 +491,17 @@ class Node:
             peers_connected = sum(
                 1 for p in self.sync_service.peer_manager.get_all_peers() if p.is_connected()
             )
-            metrics.lean_current_slot.set(self.clock.current_slot())
-            metrics.lean_connected_peers.set(peers_connected)
-            metrics.lean_head_slot.set(store.blocks[store.head].slot)
-            metrics.lean_safe_target_slot.set(store.blocks[store.safe_target].slot)
-            metrics.lean_latest_justified_slot.set(store.latest_justified.slot)
-            metrics.lean_latest_finalized_slot.set(store.latest_finalized.slot)
+            observer = get_observer()
+            observer.current_slot_observed(self.clock.current_slot())
+            observer.peer_count_observed(peers_connected)
+            observer.head_slot_observed(store.blocks[store.head].slot)
+            observer.safe_target_observed(store.blocks[store.safe_target].slot)
+            observer.justified_slot_observed(store.latest_justified.slot)
+            observer.finalized_slot_observed(store.latest_finalized.slot)
             count = (
                 len(self.validator_service.registry) if self.validator_service is not None else 0
             )
-            metrics.lean_validators_count.set(count)
+            observer.validator_count_observed(count)
             j = store.latest_justified
             f = store.latest_finalized
             j_root = j.root.hex()

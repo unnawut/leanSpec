@@ -77,6 +77,18 @@ SPEC_EVENTS = [
 ]
 
 
+# Gauge-style hooks: observer method + Prometheus gauge name.
+GAUGE_EMISSIONS = [
+    pytest.param("head_slot_observed", "lean_head_slot", id="head_slot"),
+    pytest.param("safe_target_observed", "lean_safe_target_slot", id="safe_target"),
+    pytest.param("justified_slot_observed", "lean_latest_justified_slot", id="justified"),
+    pytest.param("finalized_slot_observed", "lean_latest_finalized_slot", id="finalized"),
+    pytest.param("current_slot_observed", "lean_current_slot", id="current_slot"),
+    pytest.param("peer_count_observed", "lean_connected_peers", id="peers"),
+    pytest.param("validator_count_observed", "lean_validators_count", id="validators"),
+]
+
+
 class TestNullObserverDefault:
     """NullObserver is the registered singleton until set_observer is called."""
 
@@ -153,10 +165,20 @@ class _RecordingObserver:
     """Captures every hook call keyed by method name."""
 
     def __init__(self) -> None:
-        self.samples: dict[str, list[float]] = {
+        self.samples: dict[str, list[float | int | str]] = {
             "state_transition_timed": [],
             "on_block_timed": [],
             "on_attestation_timed": [],
+            "head_slot_observed": [],
+            "safe_target_observed": [],
+            "justified_slot_observed": [],
+            "finalized_slot_observed": [],
+            "current_slot_observed": [],
+            "peer_count_observed": [],
+            "validator_count_observed": [],
+            "reorg_detected": [],
+            "attestation_validated": [],
+            "attestation_rejected": [],
         }
 
     def state_transition_timed(self, seconds: float) -> None:
@@ -167,6 +189,36 @@ class _RecordingObserver:
 
     def on_attestation_timed(self, seconds: float) -> None:
         self.samples["on_attestation_timed"].append(seconds)
+
+    def head_slot_observed(self, slot: int) -> None:
+        self.samples["head_slot_observed"].append(slot)
+
+    def safe_target_observed(self, slot: int) -> None:
+        self.samples["safe_target_observed"].append(slot)
+
+    def justified_slot_observed(self, slot: int) -> None:
+        self.samples["justified_slot_observed"].append(slot)
+
+    def finalized_slot_observed(self, slot: int) -> None:
+        self.samples["finalized_slot_observed"].append(slot)
+
+    def current_slot_observed(self, slot: int) -> None:
+        self.samples["current_slot_observed"].append(slot)
+
+    def peer_count_observed(self, count: int) -> None:
+        self.samples["peer_count_observed"].append(count)
+
+    def validator_count_observed(self, count: int) -> None:
+        self.samples["validator_count_observed"].append(count)
+
+    def reorg_detected(self, depth: int) -> None:
+        self.samples["reorg_detected"].append(depth)
+
+    def attestation_validated(self, source: str) -> None:
+        self.samples["attestation_validated"].append(source)
+
+    def attestation_rejected(self, source: str) -> None:
+        self.samples["attestation_rejected"].append(source)
 
 
 class TestObserveContextManagers:
@@ -185,8 +237,10 @@ class TestObserveContextManagers:
         with cm():
             pass
 
-        assert len(observer.samples[method_name]) == 1
-        assert observer.samples[method_name][0] >= 0.0
+        recorded = observer.samples[method_name]
+        assert len(recorded) == 1
+        sample = recorded[0]
+        assert isinstance(sample, float) and sample >= 0.0
 
     @pytest.mark.parametrize(("method_name", "_metric_attr", "cm"), SPEC_EVENTS)
     def test_does_not_publish_when_body_raises(
@@ -202,3 +256,88 @@ class TestObserveContextManagers:
             raise RuntimeError("boom")
 
         assert observer.samples[method_name] == []
+
+
+class TestGaugeEmissions:
+    """Each gauge-style hook forwards into its paired Prometheus gauge."""
+
+    @pytest.mark.parametrize(("method_name", "_metric_attr"), GAUGE_EMISSIONS)
+    def test_null_observer_discards(self, method_name: str, _metric_attr: str) -> None:
+        getattr(NullObserver(), method_name)(42)
+
+    @pytest.mark.parametrize(("method_name", "_metric_attr"), GAUGE_EMISSIONS)
+    def test_prometheus_no_error_when_uninitialized(
+        self, method_name: str, _metric_attr: str
+    ) -> None:
+        getattr(PrometheusObserver(), method_name)(42)
+
+    @pytest.mark.parametrize(("method_name", "metric_attr"), GAUGE_EMISSIONS)
+    def test_prometheus_sets_gauge(
+        self, fresh_registry: CollectorRegistry, method_name: str, metric_attr: str
+    ) -> None:
+        _init_metrics(fresh_registry)
+
+        getattr(PrometheusObserver(), method_name)(42)
+
+        assert fresh_registry.get_sample_value(metric_attr) == 42.0
+
+    @pytest.mark.parametrize(("method_name", "metric_attr"), GAUGE_EMISSIONS)
+    def test_prometheus_overwrites_gauge(
+        self, fresh_registry: CollectorRegistry, method_name: str, metric_attr: str
+    ) -> None:
+        _init_metrics(fresh_registry)
+
+        observer = PrometheusObserver()
+        getattr(observer, method_name)(10)
+        getattr(observer, method_name)(25)
+
+        assert fresh_registry.get_sample_value(metric_attr) == 25.0
+
+
+class TestReorgDetected:
+    """reorg_detected bumps the counter and records the depth."""
+
+    def test_null_observer_discards(self) -> None:
+        NullObserver().reorg_detected(3)
+
+    def test_prometheus_no_error_when_uninitialized(self) -> None:
+        PrometheusObserver().reorg_detected(3)
+
+    def test_prometheus_increments_counter_and_records_depth(
+        self, fresh_registry: CollectorRegistry
+    ) -> None:
+        _init_metrics(fresh_registry)
+
+        PrometheusObserver().reorg_detected(3)
+
+        assert fresh_registry.get_sample_value("lean_fork_choice_reorgs_total") == 1.0
+        assert _get_histogram_sum(metrics.lean_fork_choice_reorg_depth) == 3.0
+
+
+class TestAttestationClassification:
+    """attestation_validated / attestation_rejected bump labeled counters."""
+
+    def test_null_observer_discards(self) -> None:
+        NullObserver().attestation_validated("gossip")
+        NullObserver().attestation_rejected("gossip")
+
+    def test_prometheus_no_error_when_uninitialized(self) -> None:
+        PrometheusObserver().attestation_validated("gossip")
+        PrometheusObserver().attestation_rejected("gossip")
+
+    def test_prometheus_counters_by_source(self, fresh_registry: CollectorRegistry) -> None:
+        _init_metrics(fresh_registry)
+
+        observer = PrometheusObserver()
+        observer.attestation_validated("gossip")
+        observer.attestation_validated("gossip")
+        observer.attestation_rejected("gossip")
+
+        assert (
+            fresh_registry.get_sample_value("lean_attestations_valid_total", {"source": "gossip"})
+            == 2.0
+        )
+        assert (
+            fresh_registry.get_sample_value("lean_attestations_invalid_total", {"source": "gossip"})
+            == 1.0
+        )
