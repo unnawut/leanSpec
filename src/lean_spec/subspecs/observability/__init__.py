@@ -11,6 +11,7 @@ implementation that clients wire in; other clients are free to supply
 their own.
 """
 
+from .metric_specs import ALL_METRIC_SPECS, MetricKind, MetricSpec
 from .observer import (
     NullObserver,
     SpecObserver,
@@ -22,6 +23,9 @@ from .observer import (
 )
 
 __all__ = [
+    "ALL_METRIC_SPECS",
+    "MetricKind",
+    "MetricSpec",
     "NullObserver",
     "SpecObserver",
     "get_observer",

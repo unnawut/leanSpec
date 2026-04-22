@@ -1,8 +1,10 @@
 """
-Prometheus metric definitions aligned with the leanMetrics spec.
+Prometheus-backed implementation of the leanMetrics catalog.
 
-Names, types, and buckets match
-https://github.com/leanEthereum/leanMetrics/blob/main/metrics.md
+The vendor-neutral metric catalog lives in
+lean_spec.subspecs.observability.metric_specs.
+This module materializes it into prometheus_client objects and exposes them
+through a typed registry singleton.
 
 This module uses the null object pattern for zero-cost metrics before
 initialization. Every metric attribute starts as a silent no-op stub.
@@ -27,23 +29,7 @@ from prometheus_client import (
     generate_latest,
 )
 
-# Histogram bucket boundaries from the leanMetrics spec.
-#
-# Each tuple defines the upper bounds for a Prometheus histogram.
-# Values are chosen to capture the expected latency distributions
-# for each operation category.
-
-FORK_CHOICE_BLOCK_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 1, 1.25, 1.5, 2, 4)
-"""Seconds. Block processing in fork choice is typically sub-second."""
-
-ATTESTATION_VALIDATION_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 1)
-"""Seconds. Attestation validation is fast, most finish under 100ms."""
-
-STATE_TRANSITION_BUCKETS = (0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4)
-"""Seconds. State transitions are heavier, spanning sub-second to multi-second."""
-
-REORG_DEPTH_BUCKETS = (1, 2, 3, 5, 7, 10, 20, 30, 50, 100)
-"""Block count. Reorg depths above 10 are rare and signal network issues."""
+from lean_spec.subspecs.observability.metric_specs import ALL_METRIC_SPECS, MetricSpec
 
 
 class _NoOpMetric:
@@ -84,6 +70,19 @@ class _NoOpMetric:
 
 _NOOP = _NoOpMetric()
 """Shared no-op instance used by all uninitialized metric attributes."""
+
+
+def _build(spec: MetricSpec, registry: CollectorRegistry) -> Counter | Gauge | Histogram:
+    """Materialize a MetricSpec into the matching Prometheus client object."""
+    labelnames = list(spec.labels)
+    if spec.kind == "histogram":
+        assert spec.buckets is not None, f"Histogram {spec.name} missing buckets"
+        return Histogram(
+            spec.name, spec.description, labelnames, buckets=spec.buckets, registry=registry
+        )
+    if spec.kind == "counter":
+        return Counter(spec.name, spec.description, labelnames, registry=registry)
+    return Gauge(spec.name, spec.description, labelnames, registry=registry)
 
 
 class MetricsRegistry:
@@ -154,18 +153,16 @@ class MetricsRegistry:
         """
         Replace all no-op stubs with real Prometheus metric objects.
 
+        Iterates the vendor-neutral catalog and constructs one Prometheus
+        object per spec, then assigns each to the matching typed attribute.
+        Two node-info metrics receive their initial values here:
+
+        - lean_node_info is set to 1 with name and version labels.
+        - lean_node_start_time_seconds records the wall-clock startup time.
+
         Call once at node startup. The method is idempotent.
         Repeated calls after the first are silently ignored.
         This prevents double-registration errors in Prometheus.
-
-        Metric categories created:
-
-        - Node info: identity gauge and start timestamp
-        - Fork choice: head/current/safe slots, block processing,
-          attestation validation, reorg tracking
-        - State transition: justified/finalized slots, transition time
-        - Validator: managed validator count
-        - Network: connected peer count
 
         Args:
             name: Human-readable node name exposed in the info gauge.
@@ -178,108 +175,16 @@ class MetricsRegistry:
             return
         reg = registry or REGISTRY
 
-        # Node info (leanMetrics: Node Info Metrics)
+        # Materialize every catalog entry and assign it to its typed attribute.
+        for spec in ALL_METRIC_SPECS:
+            setattr(self, spec.name, _build(spec, reg))
+
+        # Seed the node-info gauges with their startup values.
         #
-        # The info gauge is always 1. Labels carry the identity metadata.
-        self.lean_node_info = Gauge(
-            "lean_node_info",
-            "Node information (always 1).",
-            ["name", "version"],
-            registry=reg,
-        )
+        # lean_node_info uses a constant 1 with name/version labels.
+        # lean_node_start_time_seconds records when the node booted.
         self.lean_node_info.labels(name=name, version=version).set(1)
-        self.lean_node_start_time_seconds = Gauge(
-            "lean_node_start_time_seconds",
-            "Start timestamp.",
-            registry=reg,
-        )
         self.lean_node_start_time_seconds.set(time.time())
-
-        # Fork choice (leanMetrics: Fork-Choice Metrics)
-        self.lean_head_slot = Gauge(
-            "lean_head_slot",
-            "Latest slot of the lean chain.",
-            registry=reg,
-        )
-        self.lean_current_slot = Gauge(
-            "lean_current_slot",
-            "Current slot of the lean chain.",
-            registry=reg,
-        )
-        self.lean_safe_target_slot = Gauge(
-            "lean_safe_target_slot",
-            "Safe target slot.",
-            registry=reg,
-        )
-        self.lean_fork_choice_block_processing_time_seconds = Histogram(
-            "lean_fork_choice_block_processing_time_seconds",
-            "Time taken to process block in fork choice.",
-            buckets=FORK_CHOICE_BLOCK_BUCKETS,
-            registry=reg,
-        )
-        self.lean_attestations_valid_total = Counter(
-            "lean_attestations_valid_total",
-            "Total number of valid attestations.",
-            ["source"],
-            registry=reg,
-        )
-        self.lean_attestations_invalid_total = Counter(
-            "lean_attestations_invalid_total",
-            "Total number of invalid attestations.",
-            ["source"],
-            registry=reg,
-        )
-        self.lean_attestation_validation_time_seconds = Histogram(
-            "lean_attestation_validation_time_seconds",
-            "Time taken to validate attestation.",
-            buckets=ATTESTATION_VALIDATION_BUCKETS,
-            registry=reg,
-        )
-        self.lean_fork_choice_reorgs_total = Counter(
-            "lean_fork_choice_reorgs_total",
-            "Total number of fork choice reorgs.",
-            registry=reg,
-        )
-        self.lean_fork_choice_reorg_depth = Histogram(
-            "lean_fork_choice_reorg_depth",
-            "Depth of fork choice reorgs (in blocks).",
-            buckets=REORG_DEPTH_BUCKETS,
-            registry=reg,
-        )
-
-        # State transition (leanMetrics: State Transition Metrics)
-        self.lean_latest_justified_slot = Gauge(
-            "lean_latest_justified_slot",
-            "Latest justified slot.",
-            registry=reg,
-        )
-        self.lean_latest_finalized_slot = Gauge(
-            "lean_latest_finalized_slot",
-            "Latest finalized slot.",
-            registry=reg,
-        )
-        self.lean_state_transition_time_seconds = Histogram(
-            "lean_state_transition_time_seconds",
-            "Time to process state transition.",
-            buckets=STATE_TRANSITION_BUCKETS,
-            registry=reg,
-        )
-
-        # Validator (leanMetrics: Validator Metrics)
-        self.lean_validators_count = Gauge(
-            "lean_validators_count",
-            "Number of validators managed by a node.",
-            registry=reg,
-        )
-        self.lean_validators_count.set(0)
-
-        # Network (leanMetrics: Network Metrics)
-        self.lean_connected_peers = Gauge(
-            "lean_connected_peers",
-            "Number of connected peers.",
-            registry=reg,
-        )
-        self.lean_connected_peers.set(0)
 
         self._initialized = True
 
