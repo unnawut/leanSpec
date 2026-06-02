@@ -18,6 +18,7 @@ from consensus_testing.test_fixtures import (
     RebindComponentToAlternateHeadRoot,
     RebindToAlternateHeadRoot,
     SlotClockTest,
+    SplitMultiMessageProofsTest,
     SSZTest,
     StateTransitionTest,
     SwapComponentMessageBindings,
@@ -49,6 +50,7 @@ StateTransitionTestFiller = Type[StateTransitionTest]
 ForkChoiceTestFiller = Type[ForkChoiceTest]
 VerifySingleMessageProofsTestFiller = Type[VerifySingleMessageProofsTest]
 VerifyMultiMessageProofsTestFiller = Type[VerifyMultiMessageProofsTest]
+SplitMultiMessageProofsTestFiller = Type[SplitMultiMessageProofsTest]
 VerifySignaturesTestFiller = Type[VerifySignaturesTest]
 SSZTestFiller = Type[SSZTest]
 NetworkingCodecTestFiller = Type[NetworkingCodecTest]
@@ -83,6 +85,7 @@ __all__ = [
     "SwapComponentParticipantPublicKey",
     "SwapComponentMessageBindings",
     "DropComponentMessageBinding",
+    "SplitMultiMessageProofsTest",
     "VerifySignaturesTest",
     "SSZTest",
     "NetworkingCodecTest",
@@ -108,6 +111,7 @@ __all__ = [
     "ForkChoiceTestFiller",
     "VerifySingleMessageProofsTestFiller",
     "VerifyMultiMessageProofsTestFiller",
+    "SplitMultiMessageProofsTestFiller",
     "VerifySignaturesTestFiller",
     "SSZTestFiller",
     "NetworkingCodecTestFiller",

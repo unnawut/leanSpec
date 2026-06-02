@@ -8,6 +8,7 @@ from consensus_testing.test_fixtures.justifiability import JustifiabilityTest
 from consensus_testing.test_fixtures.networking_codec import NetworkingCodecTest
 from consensus_testing.test_fixtures.poseidon_permutation import PoseidonPermutationTest
 from consensus_testing.test_fixtures.slot_clock import SlotClockTest
+from consensus_testing.test_fixtures.split_multi_message_proofs import SplitMultiMessageProofsTest
 from consensus_testing.test_fixtures.ssz import SSZTest
 from consensus_testing.test_fixtures.state_transition import StateTransitionTest
 from consensus_testing.test_fixtures.sync import SyncTest
@@ -41,6 +42,7 @@ __all__ = [
     "SwapComponentParticipantPublicKey",
     "SwapComponentMessageBindings",
     "DropComponentMessageBinding",
+    "SplitMultiMessageProofsTest",
     "VerifySignaturesTest",
     "SSZTest",
     "NetworkingCodecTest",
